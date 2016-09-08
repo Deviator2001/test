@@ -1,19 +1,48 @@
 <?php
-class DB extends MySQLi {
+class DB {
 
     private static $instance;
+    private $host;
+    private $user;
+    private $password;
+    private $dbname;
     private $num_mails;
+    private $mails;
+    private $connect;
 
-    private function __construct($host, $user, $password, $database){
-        parent::__construct($host, $user, $password, $database);
+    private function __construct($host, $user, $password, $dbname)
+    {
+        $this->host = $host;
+        $this->user = $user;
+        $this->password = $password;
+        $this->dbname = $dbname;
+        $this->connect = new mysqli($this->host, $this->user, $this->password, $this->dbname);
     }
+
+    private function __clone() {
+    }
+
+    private function __wakeup() {
+    }
+
 
     public static function getInstance(){
         if (!isset(self::$instance))
         {
-            self::$instance = new DB('localhost', 'admin', 'admin', 'test');
+            self::$instance = new self('localhost', 'admin', 'admin', 'test');
         }
         return self::$instance;
+    }
+
+    public function query($sql)
+    {
+        return @mysqli_query(self::$instance->connect,$sql);
+    }
+
+    //возвращает запись в виде объекта
+    public function fetch_object($object)
+    {
+        return @mysqli_fetch_object($object);
     }
 
     public function selectMails($num_mails)
@@ -21,7 +50,7 @@ class DB extends MySQLi {
         //выбор записей с истекающим сроком публикации
         $this->num_mails = $num_mails;
 
-        $query = "SELECT
+        $sql = "SELECT
                         users.email, items.id, items.title, items.link, items.publicated_to
                   FROM
                         items INNER JOIN users
@@ -36,12 +65,12 @@ class DB extends MySQLi {
                   LIMIT
                         $this->num_mails";
 
-        $this->mails = self::getInstance()->query($query);
+        $this->mails = self::$instance->query($sql);
         if (!$this->mails) echo 'Не удалось выполнить запрос на получение записей из базы!';
     }
     public function sendAlert()
     {
-        while ($alert = $this->mails->fetch_object()) {
+        while ($alert = self::$instance->fetch_object($this->mails)) {
 
             //расчет дней до конца публикации /как вариант отправлять только дату окончания публикации ($alert->publicated_to)
             $datetime1 = new DateTime($alert->publicated_to);
@@ -52,24 +81,25 @@ class DB extends MySQLi {
             //mail('$alert->email', '$alert->title', '$alert-link', '$alert->publicated_to', $rest_days);
 
             //отметка об отправке уведомления
-            $query = "UPDATE
+            $sql = "UPDATE
                             items
                       SET
                             alerted = NOW()
                       WHERE
                             id = $alert->id";
 
-            self::getInstance()->query($query);
+            self::getInstance()->query($sql);
         }
     }
-    public function connectclose()
+    function connectclose()
     {
-        self::getInstance()->close();
+        $this->connect->close();
     }
 }
+
 
 $db = DB::getInstance();
 $db->selectMails(100);//количество писем за один раз
 $db->sendAlert();
-$db->connectclose();
+//$db->connectclose();//соединение закроется навсегда, так как новое образуется только при создании экземпляра класса
 ?>

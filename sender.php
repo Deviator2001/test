@@ -16,7 +16,15 @@ class DB {
         $this->user = $user;
         $this->password = $password;
         $this->dbname = $dbname;
-        $this->connect = new mysqli($this->host, $this->user, $this->password, $this->dbname);
+        $this->opt  = array
+        (
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_OBJ,
+            PDO::ATTR_EMULATE_PREPARES   => TRUE,
+        );
+        $dsn = "mysql:host=$this->host; dbname=$this->dbname; charset=utf8";
+        $this->connect = new PDO($dsn, $this->user, $this->password, $this->opt);
+
     }
 
     private function __clone() {
@@ -34,7 +42,7 @@ class DB {
         return self::$instance;
     }
 
-    public function query($sql)
+    /*public function query($sql)
     {
         return @mysqli_query(self::$instance->connect,$sql);
     }
@@ -44,13 +52,14 @@ class DB {
     {
         return @mysqli_fetch_object($object);
     }
-
+*/
     public function selectMails($num_mails)
     {
         //выбор записей с истекающим сроком публикации
         $this->num_mails = $num_mails;
 
-        $sql = "SELECT
+        $this->mails = $this->connect->prepare(
+                 'SELECT
                         users.email, items.id, items.title, items.link, items.publicated_to
                   FROM
                         items INNER JOIN users
@@ -63,14 +72,19 @@ class DB {
                   AND
                         UNIX_TIMESTAMP() - UNIX_TIMESTAMP(items.alerted) > 86400
                   LIMIT
-                        $this->num_mails";
-
-        $this->mails = self::$instance->query($sql);
+                        :limit');
+        $this->mails->bindParam(':limit', $num_mails);
+        $num_mails = $this->num_mails;
+        $this->mails->execute();
         if (!$this->mails) echo 'Не удалось выполнить запрос на получение записей из базы!';
     }
+
+    /**
+     *
+     */
     public function sendAlert()
     {
-        while ($alert = self::$instance->fetch_object($this->mails)) {
+        while ($alert = $this->mails->fetch()) {
 
             //расчет дней до конца публикации /как вариант отправлять только дату окончания публикации ($alert->publicated_to)
             $datetime1 = new DateTime($alert->publicated_to);
@@ -81,14 +95,17 @@ class DB {
             //mail('$alert->email', '$alert->title', '$alert-link', '$alert->publicated_to', $rest_days);
 
             //отметка об отправке уведомления
-            $sql = "UPDATE
+
+            $this->insert = $this->connect->prepare(
+                     'UPDATE
                             items
                       SET
                             alerted = NOW()
                       WHERE
-                            id = $alert->id";
-
-            self::getInstance()->query($sql);
+                            id = :id_item');
+            $this->insert->bindParam(':id_item', $id_item);
+            $id_item = $alert->id;
+            $this->insert->execute();
         }
     }
     function connectclose()

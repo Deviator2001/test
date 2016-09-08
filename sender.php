@@ -5,8 +5,7 @@ class DB extends MySQLi {
     private $num_mails;
 
     private function __construct($host, $user, $password, $database){
-
-        new Mysqli($host, $user, $password, $database);
+        parent::__construct($host, $user, $password, $database);
     }
 
     public static function getInstance(){
